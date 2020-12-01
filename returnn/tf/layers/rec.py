@@ -8231,7 +8231,6 @@ class CumConcatLayer(_ConcatInputLayer):
   layer_class = "cum_concat"
   recurrent = True  # order matters
 
-  # noinspection PyUnusedLocal
   def __init__(self, axis=":i", **kwargs):
     """
     :param str axis: Which time axis to accumulate over, or "rec-frame" / ":i" if this should accumulate over the most
@@ -8239,12 +8238,16 @@ class CumConcatLayer(_ConcatInputLayer):
     """
     super(CumConcatLayer, self).__init__(**kwargs)
 
-    data = self.output
-    # The rec-history axis is always created by get_out_data_from_opts
-    axis = data.get_axis_by_tag_name("rec-history")
+    data = self.input_data.copy()
+    axis = self._get_rec_history_axis(data, axis)
 
-    if self.network.is_inside_rec_layer():
-      # If inside a RecLayer, create a new rec-history axis to accumulate over
+    if axis is None:
+      axis = 0
+      # placeholder will get dim 1 (i.e. exactly one slice for frame t), but shape has to be None (= variable)
+      data = data.copy_add_spatial_dim(dim=1, spatial_dim_axis=axis)
+      axis_wo_batch = data.get_batch_axis_excluding_batch(axis)
+      data.shape = data.shape[:axis_wo_batch] + (None,) + data.shape[axis_wo_batch+1:]
+
       last_frames = self._rec_previous_layer.rec_vars_outputs["state"]  # [t, ..., D]
       current_frame = data.placeholder  # [1, ..., D]
       concat_frames = tf.concat([last_frames, current_frame], axis=axis)  # [t+1, ..., D]
@@ -8253,7 +8256,7 @@ class CumConcatLayer(_ConcatInputLayer):
       dyn_size = tf.tile(tf.expand_dims(self.network.get_rec_step_index() + 1, axis=0), [data.get_batch_dim()])
     else:
       # If not inside a RecLayer, this layer is a no-op
-      # leave data.placeholder unchanged, only adjust dim tag
+      data.size_placeholder = self.input_data.size_placeholder.copy()
       dyn_size = tf.identity(data.get_dynamic_size(axis))
 
     # We already set the size_placeholder to a dummy rec-history before, now do it properly
@@ -8263,6 +8266,8 @@ class CumConcatLayer(_ConcatInputLayer):
       kind=DimensionTag.Types.Time)
     data.size_placeholder[data.get_batch_axis_excluding_batch(axis)] = dyn_size
     tag.set_tag_on_size_tensor(dyn_size)
+
+    self.output = data
 
   @classmethod
   def _get_rec_history_axis(cls, data, axis):
