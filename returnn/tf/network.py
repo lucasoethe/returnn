@@ -2037,15 +2037,18 @@ class TFNetwork(object):
     self._map_search_beam_to_search_choices[beam] = search_choices
 
   def iter_layers_recursively(self):
+    """
+    Yield all sub-layers of this network (including layers inside rec-layers)
+    """
     from .layers.rec import RecLayer, _SubnetworkRecCell
-    for l in self.layers.values():
-      print('iter: ', l)
-      yield l
-      if isinstance(l, RecLayer) and isinstance(l.cell, _SubnetworkRecCell):
-        for l in l.cell.net.iter_layers_recursively():  # TODO: replace with yield from once python2.7 support is dropped
-          yield l
-        for l in l.cell.input_layers_net.iter_layers_recursively():
-          yield l
+    for layer in self.layers.values():
+      yield layer
+      if isinstance(layer, RecLayer) and isinstance(layer.cell, _SubnetworkRecCell):
+        # TODO: replace with yield from once python2.7 support is dropped
+        for sublayer in layer.cell.net.iter_layers_recursively():
+          yield sublayer
+        for sublayer in layer.cell.input_layers_net.iter_layers_recursively():
+          yield sublayer
 
 
 class TFNetworkParamsSerialized(object):
