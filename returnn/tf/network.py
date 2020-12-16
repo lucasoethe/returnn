@@ -2042,8 +2042,10 @@ class TFNetwork(object):
       print('iter: ', l)
       yield l
       if isinstance(l, RecLayer) and isinstance(l.cell, _SubnetworkRecCell):
-        yield from l.cell.net.iter_layers_recursively()
-        yield from l.cell.input_layers_net.iter_layers_recursively()
+        for l in l.cell.net.iter_layers_recursively():  # TODO: replace with yield from once python2.7 support is dropped
+          yield l
+        for l in l.cell.input_layers_net.iter_layers_recursively():
+          yield l
 
 
 class TFNetworkParamsSerialized(object):
