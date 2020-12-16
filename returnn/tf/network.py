@@ -2036,6 +2036,15 @@ class TFNetwork(object):
       return root_net.register_search_choices_for_beam(beam, search_choices)
     self._map_search_beam_to_search_choices[beam] = search_choices
 
+  def iter_layers_recursively(self):
+    from .layers.rec import RecLayer, _SubnetworkRecCell
+    for l in self.layers.values():
+      print('iter: ', l)
+      yield l
+      if isinstance(l, RecLayer) and isinstance(l.cell, _SubnetworkRecCell):
+        yield from l.cell.net.iter_layers_recursively()
+        yield from l.cell.input_layers_net.iter_layers_recursively()
+
 
 class TFNetworkParamsSerialized(object):
   """
@@ -2691,7 +2700,7 @@ class CustomCheckpointLoader:
     self.obsolete_var_names = [v for v in sorted(self.var_ckpt_names) if v not in self.var_net_names]
     self.custom_param_importers = [
       self.CustomParamImporter(layer=layer, checkpoint_loader=self)
-      for layer in network.layers.values() if layer.custom_param_importer] if network else []
+      for layer in network.iter_layers_recursively() if layer.custom_param_importer] if network else []
 
   def __repr__(self):
     keys = ["filename", "params_prefix", "load_if_prefix", "ignore_missing", "network"]
