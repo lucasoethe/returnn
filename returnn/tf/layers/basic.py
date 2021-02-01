@@ -85,9 +85,10 @@ def _name_scope_for_concat_src_layers(src_layers, postfix):
     yield scope
 
 
-def concat_sources(src_layers):
+def concat_sources(src_layers, axis=None):
   """
   :param list[LayerBase] src_layers:
+  :param int|None axis: the axis in which to concatenate the layers. Default is concatenation in the feature dimension
   :return: data with placeholders set
   :rtype: Data
   """
@@ -98,7 +99,7 @@ def concat_sources(src_layers):
   cache_key = (tuple(src_layers), 0.0, None)
   if cache_key in network.concat_sources_dropout_cache:
     return network.concat_sources_dropout_cache[cache_key].copy()
-  data = get_concat_sources_data_template(src_layers)
+  data = get_concat_sources_data_template(src_layers, axis=axis)
   # Currently we assume that get_concat_sources_data_template will match Data.get_common_data (besides the dim).
   data_dyn_shape = []
   common_source = Data.get_common_data(
@@ -113,7 +114,7 @@ def concat_sources(src_layers):
       layers_data.append(layer.output.copy_compatible_to(
         data, unbroadcast=True, except_feature=True, data_dyn_shape=data_dyn_shape))
     data.placeholder = tf.concat(
-      axis=data.feature_dim_axis,
+      axis=axis or data.feature_dim_axis,
       values=[layer_data.placeholder for layer_data in layers_data])
     axes_split_info = [None] * data.batch_ndim  # type: typing.List[typing.Optional[typing.List[int]]]
     axes_split_info[data.feature_dim_axis] = [layer_data.dim for layer_data in layers_data]
@@ -125,7 +126,7 @@ def concat_sources(src_layers):
   return data
 
 
-def get_concat_sources_data_template(src_layers, name=None):
+def get_concat_sources_data_template(src_layers, name=None, axis=None):
   """
   This just creates a template :class:`Data` instance,
   without creating any real TF tensors.
@@ -134,6 +135,7 @@ def get_concat_sources_data_template(src_layers, name=None):
 
   :param list[LayerBase]|tuple[LayerBase] src_layers:
   :param str|None name: name of the Data
+  :param int|None axis: the axis in which to concatenate the layers. Default is concatenation in the feature dimension
   :return: data with no placeholders set. it is always a copy or new instance, so safe to manipulate
   :rtype: Data
   """
@@ -152,7 +154,7 @@ def get_concat_sources_data_template(src_layers, name=None):
       dim += layer.output.dim
     beam = SearchBeam.get_combined_beam(beam, layer.output.beam)
   shape = list(common_source.shape)
-  shape[common_source.get_batch_axis_excluding_batch(common_source.feature_dim_axis)] = dim
+  shape[axis or common_source.get_batch_axis_excluding_batch(common_source.feature_dim_axis)] = dim
   kwargs = common_source.get_kwargs(with_size_placeholder=True)
   kwargs.update(dict(
     name=name or ("concat_" + "_".join([layer.name for layer in src_layers])),
@@ -4762,6 +4764,20 @@ class StackLayer(LayerBase):
     out = out.copy_add_spatial_dim(spatial_dim_axis=axis, dim=len(sources))
     return out
 
+class ConcatLayer(LayerBase):
+  """
+  Concats multiple inputs using :func: `tf.concat`.
+  """
+
+  layer_class = "concat"
+
+  def __init__(self, axis, **kwargs):
+    super(ConcatLayer, self).__init__(**kwargs)
+    self.output = concat_sources(self.sources, axis=axis)
+
+  @classmethod
+  def get_out_data_from_opts(cls, name, sources, axis, **kwargs):
+    return get_concat_sources_data_template(sources, name, axis=axis)
 
 class WeightedSumLayer(_ConcatInputLayer):
   """

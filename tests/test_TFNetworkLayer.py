@@ -2526,6 +2526,22 @@ def test_Loss_NCHW():
     assert out_flat.shape == (320, 16)
 
 
+def test_ConcatLayer():
+  with make_scope() as session:
+    net = TFNetwork(extern_data=ExternData())
+    src1 = InternalLayer(name="src1", network=net, out_type={"dim": 20})
+    src2 = InternalLayer(name="src2", network=net, out_type={"dim": 20})
+    input = [[1, 2, 3, 4, 5], [6, 7, 8, 9, 10]]
+    src1.output.placeholder = tf.constant(input, dtype=tf.int32)
+    src1.output.size_placeholder = {0: tf.constant([5, 3], dtype=tf.int32)}
+    src2.output.placeholder = tf.constant(input, dtype=tf.int32)
+    src2.output.size_placeholder = {0: tf.constant([5, 3], dtype=tf.int32)}
+    layer = ConcatLayer(
+      name="concat", network=net, axis=0, sources=[src1, src2],
+      output = ConcatLayer.get_out_data_from_opts(
+        name="concat", network=net, axis=0, sources=[src1, src2]))
+    out = session.run([layer.output.placeholder, layer.output.size_placeholder[0]])
+
 def test_ResizeLayer_fill_value():
   with make_scope() as session:
     net = TFNetwork(extern_data=ExternData())
